@@ -35,11 +35,46 @@ func TestPrepareSnowflakeConfigWithPrivateKeyPath(t *testing.T) {
 	assert.NotNil(t, cfg.PrivateKey)
 }
 
+func TestPrepareSnowflakeConfigWithPrivateKeyPathExpandsHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	privateKeyPath := filepath.Join(home, ".dbee-test-snowflake-key.p8")
+	require.NoError(t, os.WriteFile(privateKeyPath, makeTestPrivateKeyPEM(t), 0o600))
+	t.Cleanup(func() {
+		_ = os.Remove(privateKeyPath)
+	})
+
+	cfg, err := prepareSnowflakeConfig("user@account/db/schema?privateKeyPath=~/.dbee-test-snowflake-key.p8")
+	require.NoError(t, err)
+
+	assert.Equal(t, gosnowflake.AuthTypeJwt, cfg.Authenticator)
+	assert.NotNil(t, cfg.PrivateKey)
+}
+
 func TestPrepareSnowflakeConfigWithPrivateKeyEnvContents(t *testing.T) {
 	privateKeyPEM := makeTestPrivateKeyPEM(t)
 	t.Setenv("DBEE_TEST_SNOWFLAKE_PRIVATE_KEY", string(privateKeyPEM))
 
 	cfg, err := prepareSnowflakeConfig("user@account/db/schema?privateKeyEnv=DBEE_TEST_SNOWFLAKE_PRIVATE_KEY")
+	require.NoError(t, err)
+
+	assert.Equal(t, gosnowflake.AuthTypeJwt, cfg.Authenticator)
+	assert.NotNil(t, cfg.PrivateKey)
+}
+
+func TestPrepareSnowflakeConfigWithPrivateKeyEnvPathExpandsHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	privateKeyPath := filepath.Join(home, ".dbee-test-snowflake-key-env.p8")
+	require.NoError(t, os.WriteFile(privateKeyPath, makeTestPrivateKeyPEM(t), 0o600))
+	t.Cleanup(func() {
+		_ = os.Remove(privateKeyPath)
+	})
+	t.Setenv("DBEE_TEST_SNOWFLAKE_PRIVATE_KEY_PATH", "~/.dbee-test-snowflake-key-env.p8")
+
+	cfg, err := prepareSnowflakeConfig("user@account/db/schema?privateKeyEnv=DBEE_TEST_SNOWFLAKE_PRIVATE_KEY_PATH")
 	require.NoError(t, err)
 
 	assert.Equal(t, gosnowflake.AuthTypeJwt, cfg.Authenticator)

@@ -114,7 +114,7 @@ func loadSnowflakePrivateKey(opts *snowflakeDSNOptions) (*rsa.PrivateKey, error)
 	var bytes []byte
 	var err error
 	if opts.privateKeyPath != "" {
-		bytes, err = os.ReadFile(opts.privateKeyPath)
+		bytes, err = os.ReadFile(expandUserPath(opts.privateKeyPath))
 	} else {
 		bytes, err = privateKeyBytesFromEnv(opts.privateKeyEnv)
 	}
@@ -138,7 +138,23 @@ func privateKeyBytesFromEnv(name string) ([]byte, error) {
 	if strings.Contains(value, "-----BEGIN") {
 		return []byte(value), nil
 	}
-	return os.ReadFile(value)
+	return os.ReadFile(expandUserPath(value))
+}
+
+func expandUserPath(path string) string {
+	if path == "~" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return home + path[1:]
+		}
+	}
+	return path
 }
 
 func parseSnowflakePrivateKeyPEM(bytes []byte, passphrase string) (*rsa.PrivateKey, error) {
