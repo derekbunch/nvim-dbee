@@ -40,6 +40,9 @@ func (r *Snowflake) Connect(rawURL string) (core.Driver, error) {
 	if err := db.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("unable to ping snowflake: %w", err)
 	}
+	defaultCtx, defaultCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer defaultCancel()
+	hydrateSnowflakeSessionDefaults(defaultCtx, db, config)
 
 	return &snowflakeDriver{
 		c:      builders.NewClient(db),
@@ -61,4 +64,27 @@ func snowflakePingTimeout(config gosnowflake.Config) time.Duration {
 		return 2 * time.Minute
 	}
 	return 30 * time.Second
+}
+
+func hydrateSnowflakeSessionDefaults(ctx context.Context, db *sql.DB, config *gosnowflake.Config) {
+	if config.Database != "" && config.Schema != "" {
+		return
+	}
+
+	var currentDatabase, currentSchema sql.NullString
+	err := db.QueryRowContext(ctx, "select current_database(), current_schema()").Scan(&currentDatabase, &currentSchema)
+	if err != nil {
+		return
+	}
+
+	applySnowflakeSessionDefaults(config, currentDatabase, currentSchema)
+}
+
+func applySnowflakeSessionDefaults(config *gosnowflake.Config, currentDatabase, currentSchema sql.NullString) {
+	if config.Database == "" && currentDatabase.Valid {
+		config.Database = currentDatabase.String
+	}
+	if config.Schema == "" && currentSchema.Valid {
+		config.Schema = currentSchema.String
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"database/sql"
 	"encoding/pem"
 	"os"
 	"path/filepath"
@@ -106,6 +107,42 @@ func TestSnowflakePingTimeoutAllowsInteractiveAuth(t *testing.T) {
 	assert.Equal(t, 30*time.Second, snowflakePingTimeout(gosnowflake.Config{}))
 	assert.Equal(t, 2*time.Minute, snowflakePingTimeout(gosnowflake.Config{Authenticator: gosnowflake.AuthTypeOAuthAuthorizationCode}))
 	assert.Equal(t, 2*time.Minute, snowflakePingTimeout(gosnowflake.Config{Authenticator: gosnowflake.AuthTypeExternalBrowser}))
+}
+
+func TestSnowflakeIdentifier(t *testing.T) {
+	assert.Equal(t, `"RAW"`, snowflakeIdentifier("RAW"))
+	assert.Equal(t, `"SCHEMA""NAME"`, snowflakeIdentifier(`SCHEMA"NAME`))
+	assert.Equal(t, `"DB"."SCHEMA"."TABLE"`, snowflakeTableName("DB", "SCHEMA", "TABLE"))
+}
+
+func TestSnowflakeDatabaseNameFromRowUsesNameHeader(t *testing.T) {
+	got := snowflakeDatabaseNameFromRow([]string{"created_on", "kind", "name"}, []any{"date", "STANDARD", "DB"})
+
+	assert.Equal(t, "DB", got)
+}
+
+func TestSnowflakeDatabaseNameFromRowFallsBackToShowDatabaseIndex(t *testing.T) {
+	got := snowflakeDatabaseNameFromRow([]string{"header_0", "header_1"}, []any{"date", "DB"})
+
+	assert.Equal(t, "DB", got)
+}
+
+func TestApplySnowflakeSessionDefaults(t *testing.T) {
+	cfg := &gosnowflake.Config{}
+
+	applySnowflakeSessionDefaults(cfg, sql.NullString{String: "DB", Valid: true}, sql.NullString{String: "SCHEMA", Valid: true})
+
+	assert.Equal(t, "DB", cfg.Database)
+	assert.Equal(t, "SCHEMA", cfg.Schema)
+}
+
+func TestApplySnowflakeSessionDefaultsDoesNotOverrideExplicitDSNValues(t *testing.T) {
+	cfg := &gosnowflake.Config{Database: "EXPLICIT_DB", Schema: "EXPLICIT_SCHEMA"}
+
+	applySnowflakeSessionDefaults(cfg, sql.NullString{String: "DB", Valid: true}, sql.NullString{String: "SCHEMA", Valid: true})
+
+	assert.Equal(t, "EXPLICIT_DB", cfg.Database)
+	assert.Equal(t, "EXPLICIT_SCHEMA", cfg.Schema)
 }
 
 func writeTestPrivateKey(t *testing.T, contents []byte) string {
